@@ -1,13 +1,8 @@
 <div align="center">
 
 # <b><font size="7">✨ AstrBot 鼠鼠偷吃插件 ✨</font></b>
-
-
-## 访问统计
-
 ## <a href="https://count.getloli.com/"><img src="https://count.getloli.com/get/@:astrbot_plugin_touchi?theme=rule34"></a>
-</div>
- 群娱插件 把三角洲开箱做成一款小游戏！
+</div>群娱插件 把三角洲开箱做成一款小游戏！
 
 ---
 
