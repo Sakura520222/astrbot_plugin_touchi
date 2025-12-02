@@ -839,6 +839,9 @@ class TouchiTools:
                prefix = "鼠鼠猛攻获得了" if menggong_mode else "鼠鼠偷吃到了"
                final_message = f"{prefix}\n总价值: {final_value:,}"
 
+               # 🔧 修复：确保无事件时也更新仓库价值
+               await self.add_items_to_collection(user_id, placed_items)
+
                # 洲了个洲彩蛋（2%概率）
                if random.random() < 0.02:
                    final_message += "\n\n🎮 特殊事件触发！洲了个洲游戏开始！\n💰 游戏获胜可获得100万哈夫币奖励！\n📝 使用 '洲了个洲' 指令开始游戏"
