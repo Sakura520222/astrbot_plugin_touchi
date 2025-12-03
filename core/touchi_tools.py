@@ -40,7 +40,7 @@ class TouchiTools:
         self.events = TouchiEvents(self.db_path, self.biaoqing_dir)
         
         self.safe_box_messages = [
-            ("鼠鼠偷吃中...(预计{}min)", ["touchi1.gif", "touchi2.gif", "touchi3.gif", "touchi4.gif"], 120),
+            ("鼠鼠偷吃中...(预计{}min)", ["touchi1.gif", "touchi2.gif", "touchi3.gif", "touchi4.gif"], 600),
             ("鼠鼠猛攻中...(预计{}min)", ["menggong.gif", "menggong2.gif", "menggong3.gif"], 60)
         ]
         
@@ -1325,7 +1325,7 @@ class TouchiTools:
             actual_interval = 600 / self.multiplier  # 基础10分钟除以倍率
             interval_minutes = round(actual_interval / 60, 1)
             
-            yield event.plain_result(f"🤖 自动偷吃已开启！\n⏰ 每{interval_minutes}分钟自动偷吃\n🎯 金红概率降低\n📊 只记录数据，不输出图片\n⏱️ 4小时后自动停止")
+            yield event.plain_result(f"🤖 自动偷吃已开启！\n⏰ 每{interval_minutes}分钟自动偷吃\n🎯 金红概率降低\n📊 只记录数据，不输出图片\n⏱️ 8小时后自动停止")
             
         except Exception as e:
             logger.error(f"开启自动偷吃时出错: {e}")
@@ -1395,14 +1395,14 @@ class TouchiTools:
         """自动偷吃循环任务"""
         try:
             start_time = time.time()
-            max_duration = 4 * 3600  # 4小时 = 14400秒 - 🔧 修复：应该是3600而不是3600
-            base_interval = 600  # 基础间隔10分钟 = 600秒
+            max_duration = 8 * 3600  # 4小时 = 14400秒 - 🔧 修复：应该是3600而不是3600
+            base_interval = 300  # 基础间隔10分钟 = 600秒
             interval = base_interval / self.multiplier  # 应用冷却倍率
             
             while True:
-                # 检查是否超过4小时
+                # 检查是否超过8小时
                 if time.time() - start_time >= max_duration:
-                    logger.info(f"用户 {user_id} 的自动偷吃已运行4小时，自动停止")
+                    logger.info(f"用户 {user_id} 的自动偷吃已运行8小时，自动停止")
                     await self._stop_auto_touchi_internal(user_id)
                     # 注意：这里不能发送消息，因为这是后台任务
                     break
