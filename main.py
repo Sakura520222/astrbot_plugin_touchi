@@ -1,6 +1,6 @@
 import os
 import asyncio
-import aiosqlite  # Import the standard SQLite library
+import aiosqlite  
 from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star, register, StarTools
@@ -9,15 +9,15 @@ from astrbot.api.event.filter import command
 from .core.touchi_tools import TouchiTools
 from .core.tujian import TujianTools
 from .core.zhou import ZhouGame
-# from .core.roulette import RouletteTools  # 改为独立调用
 
-@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.7.6")
+
+@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.7.7")
 class Main(Star):
     @classmethod
     def info(cls):
         return {
             "name": "astrbot_plugin_touchi",
-            "version": "2.7.6",
+            "version": "2.7.7",
             "description": "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘等多种功能",
             "author": "sa1guu"
         }
@@ -130,6 +130,12 @@ class Main(Star):
                 await db.execute("""
                     INSERT OR IGNORE INTO system_config (config_key, config_value) 
                     VALUES ('menggong_time_multiplier', '1.0')
+                """)
+                
+                # 添加冷却倍率配置
+                await db.execute("""
+                    INSERT OR IGNORE INTO system_config (config_key, config_value) 
+                    VALUES ('touchi_cooldown_multiplier', '1.0')
                 """)
                 
                 # 添加用户最后一次偷吃记录表
@@ -305,19 +311,23 @@ class Main(Star):
                yield event.plain_result("请提供倍率值，例如：鼠鼠冷却倍率 0.5")
                return
         
-           multiplier = float(args[1])
+           # 尝试转换为浮点数
+           try:
+               multiplier = float(args[1])
+           except ValueError:
+               yield event.plain_result(f"❌ 无法解析倍率值: '{args[1]}'\n💡 倍率必须是数字，例如: 0.5, 1.0, 2.0, 100")
+               return
+           
            if multiplier < 0.01 or multiplier > 100:
-               yield event.plain_result("倍率必须在0.01到100之间")
+               yield event.plain_result("❌ 倍率必须在0.01到100之间")
                return
             
-           msg = self.touchi_tools.set_multiplier(multiplier)
+           msg = await self.touchi_tools.set_multiplier(multiplier)
            yield event.plain_result(msg)
         
-       except ValueError:
-           yield event.plain_result("倍率必须是数字")
        except Exception as e:
            logger.error(f"设置倍率时出错: {e}")
-           yield event.plain_result("设置倍率失败，请重试")
+           yield event.plain_result("❌ 设置倍率失败，请重试")
 
     @command("六套猛攻")
     async def menggong(self, event: AstrMessageEvent):
