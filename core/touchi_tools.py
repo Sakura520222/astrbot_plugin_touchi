@@ -578,6 +578,60 @@ class TouchiTools:
             Plain("\n🎉 鼠鼠猛攻完成！5次偷吃已全部结束！\n")
         ]
         yield event.chain_result(chain)
+    
+    async def add_hafubi(self, event):
+        """增加哈夫币功能：一键增加5kw哈夫币，支持@群成员"""
+        import re
+        
+        user_id = event.get_sender_id()
+        message = event.message_str
+        
+        # 解析@群成员信息
+        target_user_id = user_id  # 默认给自己增加
+        group_id = event.get_group_id()
+        
+        # 正则匹配@群成员，提取QQ号，支持@昵称(QQ号)格式
+        at_pattern = re.compile(r'@[^(]*\(([0-9]+)\)')
+        at_match = at_pattern.search(message)
+        if at_match:
+            target_user_id = at_match.group(1)
+        
+        # 增加5kw哈夫币
+        added_hafubi = 50000000  # 5kw哈夫币
+        
+        try:
+            # 获取目标用户当前经济数据
+            target_economy_data = await self.get_user_economy_data(target_user_id)
+            
+            # 更新哈夫币
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "INSERT OR IGNORE INTO user_economy (user_id) VALUES (?)",
+                    (target_user_id,)
+                )
+                await db.execute(
+                    "UPDATE user_economy SET warehouse_value = warehouse_value + ? WHERE user_id = ?",
+                    (added_hafubi, target_user_id)
+                )
+                await db.commit()
+            
+            # 构建成功消息
+            if target_user_id == user_id:
+                message = f"✅ 成功给自己增加了 {added_hafubi} 哈夫币"
+            else:
+                # 尝试获取被@成员的昵称
+                nickname = f"用户{target_user_id}"
+                if group_id:
+                    member_nicknames = await self._get_group_member_nicknames(event, group_id)
+                    if target_user_id in member_nicknames:
+                        nickname = member_nicknames[target_user_id]
+                message = f"✅ 成功给{nickname}增加了 {added_hafubi} 哈夫币"
+            
+            yield event.plain_result(message)
+        except Exception as e:
+            logger.error(f"增加哈夫币时出错: {e}")
+            yield event.plain_result("❌ 增加哈夫币失败，请稍后重试")
+            return
 
     async def send_delayed_safe_box(self, event, wait_time, user_id=None, menggong_mode=False, time_multiplier=1.0, shushu_menggong=False):
         """异步生成保险箱图片，发送并记录到数据库"""

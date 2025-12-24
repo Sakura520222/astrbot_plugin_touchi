@@ -714,6 +714,23 @@ class Main(Star):
         
         async for result in self.touchi_tools.shushu_menggong(event):
             yield result
+    
+    @command("增加哈夫币")
+    async def add_hafubi(self, event: AstrMessageEvent):
+        """增加哈夫币（仅管理员）"""
+        allowed, error_msg = self._check_all_permissions(event)
+        if not allowed:
+            if error_msg:
+                yield event.plain_result(error_msg)
+            return
+        
+        # 检查用户是否为管理员
+        if event.role != "admin":
+            yield event.plain_result("❌ 你不是我的主人")
+            return
+        
+        async for result in self.touchi_tools.add_hafubi(event):
+            yield result
 
     @command("检视")
     async def jianshi(self, event: AstrMessageEvent):
