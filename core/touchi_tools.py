@@ -52,6 +52,9 @@ class TouchiTools:
         self.nickname_cache = {}     # 缓存群成员昵称，格式: {group_id: {user_id: nickname}}
         self.cache_expire_time = {}  # 缓存过期时间
         
+        # 鼠鼠猛攻相关
+        self.last_shushu_menggong = {}  # 记录用户最后一次使用鼠鼠猛攻的时间
+        
         # 延迟结果存储
         self._delayed_result = None
         
@@ -476,6 +479,40 @@ class TouchiTools:
             else:
                 # 等待时间已过，清除等待状态
                 del self.waiting_users[user_id]
+        
+        # 检查3小时冷却
+        if user_id in self.last_shushu_menggong:
+            last_usage = self.last_shushu_menggong[user_id]
+            cooldown_time = 3 * 3600  # 3小时冷却
+            if now - last_usage < cooldown_time:
+                remaining_time = cooldown_time - (now - last_usage)
+                hours = int(remaining_time // 3600)
+                minutes = int((remaining_time % 3600) // 60)
+                seconds = int(remaining_time % 60)
+                yield event.plain_result(f"鼠鼠猛攻冷却中，请等待 {hours}小时{minutes}分{seconds}秒")
+                return
+        
+        # 检查哈夫币是否足够
+        required_hafubi = 10000000  # 1000万哈夫币
+        if economy_data["warehouse_value"] < required_hafubi:
+            yield event.plain_result(f"哈夫币不足！鼠鼠猛攻需要消耗 {required_hafubi} 哈夫币，当前拥有 {economy_data['warehouse_value']} 哈夫币")
+            return
+        
+        # 扣除哈夫币
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE user_economy SET warehouse_value = warehouse_value - ? WHERE user_id = ?",
+                    (required_hafubi, user_id)
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error(f"扣除哈夫币时出错: {e}")
+            yield event.plain_result("扣除哈夫币失败，请稍后重试")
+            return
+        
+        # 更新用户最后使用时间
+        self.last_shushu_menggong[user_id] = now
         
         # 鼠鼠猛攻开始消息
         chain = [

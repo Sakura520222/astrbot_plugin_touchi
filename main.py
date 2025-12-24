@@ -705,16 +705,11 @@ class Main(Star):
     
     @command("鼠鼠猛攻")
     async def shushu_menggong(self, event: AstrMessageEvent):
-        """鼠鼠猛攻功能（仅管理员）"""
+        """鼠鼠猛攻功能"""
         allowed, error_msg = self._check_all_permissions(event)
         if not allowed:
             if error_msg:
                 yield event.plain_result(error_msg)
-            return
-        
-        # 检查用户是否为管理员
-        if event.role != "admin":
-            yield event.plain_result("❌ 你不是我的主人")
             return
         
         async for result in self.touchi_tools.shushu_menggong(event):
