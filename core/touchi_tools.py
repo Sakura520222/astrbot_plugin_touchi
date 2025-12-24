@@ -445,8 +445,104 @@ class TouchiTools:
                         Plain(f"\n{result['message']}")
                     ]
                     yield event.chain_result(chain)
+    
+    async def shushu_menggong(self, event):
+        """鼠鼠猛攻功能：一键立即进行5次1s的偷吃，红概率提升至30/100，金概率提升至70/100"""
+        if not self.enable_touchi:
+            yield event.plain_result("盲盒功能已关闭")
+            return
+            
+        user_id = event.get_sender_id()
+        now = asyncio.get_event_loop().time()
+        
+        # 检查用户是否在自动偷吃状态，如果是则不允许手动偷吃
+        economy_data = await self.get_user_economy_data(user_id)
+        if economy_data and economy_data["auto_touchi_active"]:
+            yield event.plain_result("自动偷吃进行中，无法手动偷吃。请先关闭自动偷吃。")
+            return
+        
+        # 检查用户是否在等待状态
+        if user_id in self.waiting_users:
+            end_time = self.waiting_users[user_id]
+            remaining_time = end_time - now
+            if remaining_time > 0:
+                minutes = int(remaining_time // 60)
+                seconds = int(remaining_time % 60)
+                if minutes > 0:
+                    yield event.plain_result(f"鼠鼠还在偷吃中，请等待 {minutes}分{seconds}秒")
+                else:
+                    yield event.plain_result(f"鼠鼠还在偷吃中，请等待 {seconds}秒")
+                return
+            else:
+                # 等待时间已过，清除等待状态
+                del self.waiting_users[user_id]
+        
+        # 鼠鼠猛攻开始消息
+        chain = [
+            Plain("🐭 鼠鼠猛攻开始！将进行5次1s偷吃，红概率30%，金概率70%...\n")
+        ]
+        yield event.chain_result(chain)
+        
+        # 进行5次偷吃
+        for i in range(5):
+            # 显示当前进度
+            chain = [
+                Plain(f"\n🔴 第{i+1}/5次猛攻偷吃...\n")
+            ]
+            yield event.chain_result(chain)
+            
+            # 立即进行1秒的偷吃
+            actual_wait_time = 1  # 1秒
+            time_multiplier = 1.0  # 固定倍率
+            
+            # 将时间倍率传递给后续处理，用于影响爆率
+            setattr(event, '_time_multiplier', time_multiplier)
+            
+            # 创建后台任务并等待结果
+            task = asyncio.create_task(self.send_delayed_safe_box(event, actual_wait_time, user_id, time_multiplier=time_multiplier, shushu_menggong=True))
+            
+            # 等待后台任务完成
+            await task
+            
+            # 检查是否有延迟结果需要发送
+            if hasattr(self, '_delayed_result') and self._delayed_result:
+                result = self._delayed_result
+                self._delayed_result = None  # 清除结果
+                
+                # 如果有事件触发，先发送事件消息
+                if hasattr(self, '_delayed_event_message') and self._delayed_event_message:
+                    yield event.chain_result(self._delayed_event_message)
+                    self._delayed_event_message = None  # 清除事件消息
+        
+                # 发送偷吃结果
+                if result['success']:
+                    if result['image_path']:
+                        chain = [
+                            At(qq=event.get_sender_id()),
+                            Plain(f"\n{result['message']}"),
+                            Image.fromFileSystem(result['image_path']),
+                        ]
+                        yield event.chain_result(chain)
+                    else:
+                        chain = [
+                            At(qq=event.get_sender_id()),
+                            Plain(f"\n{result['message']}")
+                        ]
+                        yield event.chain_result(chain)
+                else:
+                    chain = [
+                        At(qq=event.get_sender_id()),
+                        Plain(f"\n{result['message']}")
+                    ]
+                    yield event.chain_result(chain)
+        
+        # 猛攻结束消息
+        chain = [
+            Plain("\n🎉 鼠鼠猛攻完成！5次偷吃已全部结束！\n")
+        ]
+        yield event.chain_result(chain)
 
-    async def send_delayed_safe_box(self, event, wait_time, user_id=None, menggong_mode=False, time_multiplier=1.0):
+    async def send_delayed_safe_box(self, event, wait_time, user_id=None, menggong_mode=False, time_multiplier=1.0, shushu_menggong=False):
         """异步生成保险箱图片，发送并记录到数据库"""
         try:
             await asyncio.sleep(wait_time)
@@ -476,7 +572,7 @@ class TouchiTools:
             use_menggong_probability = menggong_mode
             
             safe_image_path, placed_items = await loop.run_in_executor(
-                None, generate_safe_image, use_menggong_probability, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image
+                None, generate_safe_image, use_menggong_probability, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image, shushu_menggong
             )
             
             if safe_image_path and os.path.exists(safe_image_path):

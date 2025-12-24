@@ -298,11 +298,14 @@ def place_items(items, grid_width, grid_height, total_grid_size=2):
     
     return placed
 
-def create_safe_layout(items, menggong_mode=False, grid_size=2, auto_mode=False, time_multiplier=1.0):
+def create_safe_layout(items, menggong_mode=False, grid_size=2, auto_mode=False, time_multiplier=1.0, shushu_menggong=False):
     selected_items = []
     
     # 根据模式调整概率
-    if auto_mode:
+    if shushu_menggong:
+        # 鼠鼠猛攻模式：红概率30%，金概率70%，无紫色和蓝色
+        level_chances = {"purple": 0.0, "blue": 0.0, "gold": 0.7, "red": 0.3}
+    elif auto_mode:
         # 自动模式：金红概率降低
         if menggong_mode:
             level_chances = {"purple": 0.55, "blue": 0.0, "gold": 0.15, "red": 0.033}
@@ -837,7 +840,7 @@ def cleanup_old_gifs(keep_recent=2):
         print(f"Error cleaning up old GIFs: {e}")
 
 def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
-                        gif_scale=0.7, optimize_size=False, enable_static_image=False):
+                        gif_scale=0.7, optimize_size=False, enable_static_image=False, shushu_menggong=False):
     """
     Generate a safe GIF animation and return the image path and list of placed items.
 
@@ -848,6 +851,7 @@ def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
         gif_scale (float): Scale factor for the final GIF size (1.0 = original size, 0.5 = half size, 2.0 = double size)
         optimize_size (bool): Whether to optimize GIF file size (reduces colors and enables compression, may affect quality)
         enable_static_image (bool): Whether to generate static image (only last frame) instead of GIF animation
+        shushu_menggong (bool): Whether to use shushu menggong mode
 
     Returns:
         tuple: (output_path, placed_items)
@@ -860,7 +864,7 @@ def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
         return None, []
 
     placed_items, start_x, start_y, region_width, region_height = create_safe_layout(
-        items, menggong_mode, grid_size, auto_mode=False, time_multiplier=time_multiplier
+        items, menggong_mode, grid_size, auto_mode=False, time_multiplier=time_multiplier, shushu_menggong=shushu_menggong
     )
 
     # ============ ① 一体化写法：直接拿帧序列 + 总帧数 ============
