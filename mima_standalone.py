@@ -34,11 +34,16 @@ logger = Logger()
 class YuafengSJZApi:
     """
     每日三角洲密码API接口类
-    使用http://api-v2.yuafeng.cn/API/sjzmm.php接口
+    主要：https://api-v2.yuafeng.cn/API/sjzmm.php接口
+    备用：https://apicx.asia/api/get.game.deltaforce接口
     """
 
     def __init__(self):
-        self.base_url = "http://api-v2.yuafeng.cn/API/sjzmm.php"
+        self.base_url = "https://api-v2.yuafeng.cn/API/sjzmm.php"
+        self.backup_api_url = "https://apicx.asia/api/get.game.deltaforce"
+        self.backup_token = "f84ao9lMF_q7husBWRfgUw"
+        self.tmini_api_url = "https://tmini.net/api/sjzmm"
+        self.tmini_api_key = "VDDQ59QFBV9Z1IZ412P9"
         self.timeout = 30  # 请求超时时间（秒）
 
     async def map_pwd_daily(self) -> Dict:
@@ -46,80 +51,266 @@ class YuafengSJZApi:
         获取每日三角洲密码数据
         返回格式: {地图名称: {"password": 密码, "date": 日期}}
         """
+        # 首先尝试主API
         try:
-            # 使用同步的requests库，因为API很简单不需要异步
-            import requests
-            
-            logger.info("正在从API获取密码数据...")
-            
-            # 调用API接口
+            result = await self._try_main_api()
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"主API失败: {e}")
+        
+        # 如果主API失败，尝试备用API
+        try:
+            logger.info("主API无数据，尝试备用API...")
+            result = await self._try_backup_api()
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"备用API失败: {e}")
+        
+        # 如果前两个API都失败，尝试tmini API
+        try:
+            logger.info("前两个API都失败，尝试tmini API...")
+            result = await self._try_tmini_api()
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"tmini API失败: {e}")
+        
+        # 所有API都失败，返回空数据
+        logger.warning("所有API都无数据")
+        return {}
+
+    async def _try_main_api(self) -> Dict:
+        """尝试主API"""
+        import requests
+        
+        # 首先尝试JSON格式
+        try:
             response = requests.get(
                 self.base_url,
                 params={'type': 'json'},
                 timeout=self.timeout
             )
-            
-            # 检查响应状态
             response.raise_for_status()
-            
-            # 解析JSON响应
             api_data = response.json()
             
             # 检查API返回的状态
             if api_data.get('code') != 0 or api_data.get('status') != 'success':
                 error_msg = api_data.get('msg', 'API返回错误')
-                logger.error(f"API错误: {error_msg}")
+                logger.warning(f"JSON API返回错误: {error_msg}")
                 raise Exception(f"API错误: {error_msg}")
             
             # 提取数据
             data = api_data.get('data', {})
             items = data.get('items', [])
             
-            if not items:
-                logger.warning("API返回的数据为空")
-                return {}
+            if items:
+                logger.info(f"主API成功获取到 {len(items)} 个密码数据")
+                return self._parse_json_data(data)
+            else:
+                logger.warning("主API返回的数据为空，尝试文本格式")
+                raise Exception("JSON数据为空")
+                
+        except (requests.exceptions.JSONDecodeError, Exception) as e:
+            # 如果JSON格式失败，尝试文本格式
+            logger.info("尝试获取文本格式的密码数据...")
+            response = requests.get(self.base_url, timeout=self.timeout)
+            response.raise_for_status()
+            text_data = response.text
             
-            # 转换数据格式，充分利用新API返回的丰富信息
+            if "未获取到有效密码信息" in text_data:
+                logger.warning("主API返回：未获取到有效密码信息")
+                raise Exception("无有效数据")
+            else:
+                # 尝试解析文本格式
+                return self._parse_text_data(text_data)
+
+    async def _try_backup_api(self) -> Dict:
+        """尝试备用API"""
+        import requests
+        
+        try:
+            headers = {'Authorization': self.backup_token}
+            response = requests.get(
+                self.backup_api_url,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            api_data = response.json()
+            
+            # 检查API返回的状态
+            if api_data.get('code') != 200:
+                error_msg = api_data.get('msg', '备用API返回错误')
+                logger.warning(f"备用API返回错误: {error_msg}")
+                raise Exception(f"备用API错误: {error_msg}")
+            
+            # 提取数据
+            items = api_data.get('data', [])
+            
+            if items:
+                logger.info(f"备用API成功获取到 {len(items)} 个密码数据")
+                return self._parse_backup_api_data(api_data)
+            else:
+                logger.warning("备用API返回的数据为空")
+                raise Exception("备用API无数据")
+                
+        except Exception as e:
+            logger.error(f"备用API请求失败: {e}")
+            raise
+
+    async def _try_tmini_api(self) -> Dict:
+        """尝试tmini API"""
+        import requests
+        
+        try:
+            response = requests.get(
+                self.tmini_api_url,
+                params={
+                    'ckey': self.tmini_api_key,
+                    'type': 'json'
+                },
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            api_data = response.json()
+            
+            # 检查API返回的状态
+            if api_data.get('status') != 'success':
+                error_msg = api_data.get('message', 'tmini API返回错误')
+                logger.warning(f"tmini API返回错误: {error_msg}")
+                raise Exception(f"tmini API错误: {error_msg}")
+            
+            # 提取数据
+            data = api_data.get('data', {})
+            items = data.get('passwords', [])
+            
+            if items:
+                logger.info(f"tmini API成功获取到 {len(items)} 个密码数据")
+                return self._parse_tmini_api_data(api_data)
+            else:
+                logger.warning("tmini API返回的数据为空")
+                raise Exception("tmini API无数据")
+                
+        except Exception as e:
+            logger.error(f"tmini API请求失败: {e}")
+            raise
+
+    def _parse_json_data(self, data: Dict) -> Dict:
+        """解析JSON格式的数据"""
+        items = data.get('items', [])
+        map_data = {}
+        current_date = data.get('update_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        
+        for item in items:
+            map_name = item.get('map_name', '未知地图')
+            password = item.get('password', '未知密码')
+            location = item.get('location', '')
+            sort = item.get('sort', 0)
+            image_urls = item.get('image_urls', [])
+            
+            map_data[map_name] = {
+                "password": password,
+                "date": current_date,
+                "location": location,
+                "image_urls": image_urls,
+                "sort": sort
+            }
+            
+            logger.info(f"获取到地图 {map_name} 的密码: {password} (位置: {location})")
+        
+        return map_data
+
+    def _parse_backup_api_data(self, api_data: Dict) -> Dict:
+        """解析备用API的数据格式"""
+        items = api_data.get('data', [])
+        map_data = {}
+        current_date = api_data.get('time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        
+        for item in items:
+            map_name = item.get('map_name', '未知地图')
+            password = item.get('password', '未知密码')
+            location = item.get('location', '')
+            sort = item.get('sort', 0)
+            image_urls = item.get('image_urls', [])
+            
+            map_data[map_name] = {
+                "password": password,
+                "date": current_date,
+                "location": location,
+                "image_urls": image_urls,
+                "sort": sort
+            }
+            
+            logger.info(f"[备用API] 获取到地图 {map_name} 的密码: {password} (位置: {location})")
+        
+        return map_data
+
+    def _parse_tmini_api_data(self, api_data: Dict) -> Dict:
+        """解析tmini API的数据格式"""
+        data = api_data.get('data', {})
+        items = data.get('passwords', [])
+        map_data = {}
+        current_date = data.get('last_updated', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        
+        for item in items:
+            map_name = item.get('map_name', '未知地图')
+            password = item.get('password', '未知密码')
+            location_info = item.get('location_info', {})
+            location = location_info.get('description', '')
+            sort = item.get('sort', 0)
+            image_urls = item.get('location_info', {}).get('images', [])
+            
+            map_data[map_name] = {
+                "password": password,
+                "date": current_date,
+                "location": location,
+                "image_urls": image_urls,
+                "sort": sort
+            }
+            
+            logger.info(f"[tmini API] 获取到地图 {map_name} 的密码: {password} (位置: {location})")
+        
+        return map_data
+
+    def _parse_text_data(self, text_data: str) -> Dict:
+        """解析文本格式的数据"""
+        try:
+            lines = text_data.strip().split('\n')
             map_data = {}
-            current_date = data.get('update_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            for item in items:
-                map_name = item.get('map_name', '未知地图')
-                password = item.get('password', '未知密码')
-                location = item.get('location', '')
-                sort = item.get('sort', 0)
-                image_urls = item.get('image_urls', [])
-                
-                # 使用地图名称作为键，保持与原有格式兼容
-                map_data[map_name] = {
-                    "password": password,
-                    "date": current_date,
-                    "location": location,
-                    "image_urls": image_urls,
-                    "sort": sort  # 新增排序信息
-                }
-                
-                logger.info(f"获取到地图 {map_name} 的密码: {password} (位置: {location})")
+            # 查找更新时间
+            for line in lines:
+                if "更新时间：" in line:
+                    current_date = line.split("更新时间：")[1].strip()
+                    break
             
-            logger.info(f"成功获取 {len(map_data)} 个地图的密码数据")
+            # 简单的文本解析逻辑
+            current_map = None
+            current_password = None
+            current_location = ""
+            
+            for line in lines:
+                line = line.strip()
+                
+                # 跳过标题行
+                if "状态码：" in line or "状态信息：" in line or "三角洲行动每日密码" in line:
+                    continue
+                
+                # 查找地图名称和密码的模式
+                if line and not line.startswith("未获取到有效密码信息"):
+                    # 这里可以根据实际文本格式进行调整
+                    # 目前先返回空，等待实际数据格式
+                    pass
+            
+            logger.info("文本格式解析完成")
             return map_data
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"网络请求错误: {e}")
-            if "timeout" in str(e).lower():
-                raise Exception("请求超时，请检查网络连接")
-            elif "connection" in str(e).lower():
-                raise Exception("网络连接失败，请检查网络连接")
-            else:
-                raise Exception(f"网络请求失败: {str(e)}")
-                
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON解析错误: {e}")
-            raise Exception("API返回数据格式错误")
-            
         except Exception as e:
-            logger.error(f"获取密码数据时出错: {e}")
-            raise
+            logger.error(f"解析文本数据出错: {e}")
+            return {}
 
 
 class MimaCache:
@@ -200,7 +391,7 @@ class MimaCache:
             with open(self.cache_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, ensure_ascii=False, indent=2)
                 
-            # 同时保存到TXT文件
+            # 同时保存到TXT文件（不下载图片）
             self._save_txt_file(data)
                 
             logger.info("密码缓存已保存")
@@ -453,7 +644,18 @@ class MimaCache:
         if not password_data:
             if error_context:
                 return f"🐭 {error_context}"
-            return "🐭 暂时无法获取密码信息，请稍后再试"
+            
+            current_hour = datetime.now().hour
+            if 6 <= current_hour < 12:
+                time_hint = "🌅 早上好！密码通常在上午更新，请稍后再试"
+            elif 12 <= current_hour < 18:
+                time_hint = "☀️ 下午好！密码可能还未更新，请稍后再试"
+            elif 18 <= current_hour < 22:
+                time_hint = "🌆 晚上好！密码可能已经更新，请稍后再试"
+            else:
+                time_hint = "🌙 夜深了！密码可能明日早上更新"
+            
+            return f"🐭 当前暂无密码数据\n\n{time_hint}\n\n💡 提示：\n• 密码通常在特定时间更新\n• 可以稍后再次尝试\n• 使用'刷新密码'命令强制更新"
         
         # 按sort字段排序显示
         sorted_items = sorted(password_data.items(), key=lambda x: x[1].get('sort', 999))
@@ -463,18 +665,10 @@ class MimaCache:
         
         for map_name, info in sorted_items:
             password = info.get('password', '未知密码')
-            location = info.get('location', '')
-            image_urls = info.get('image_urls', [])
             sort = info.get('sort', 0)
             
             message_lines.append(f"📍 {map_name}")
             message_lines.append(f"🔑 密码: {password}")
-            
-            if location:
-                message_lines.append(f"🎯 位置: {location}")
-            
-            # 不再显示参考图片信息
-            
             message_lines.append("")
         
         # 添加缓存和提示信息
@@ -702,13 +896,6 @@ def get_mima_from_txt() -> Optional[str]:
                     # 输出一个完整的密码条目
                     message_lines.append(f"📍 {current_map}")
                     message_lines.append(f"🔑 密码: {current_password}")
-                    message_lines.append(f"📅 日期: {current_date}")
-                    
-                    if current_location:
-                        message_lines.append(f"🎯 位置: {current_location}")
-                    
-            # 不再显示参考图片信息
-                    
                     message_lines.append("")
                     
                     # 重置当前条目数据
