@@ -25,6 +25,9 @@ class Logger:
     
     def warning(self, msg):
         self.logger.warning(msg)
+    
+    def debug(self, msg):
+        self.logger.debug(msg)
 
 # 全局日志实例
 logger = Logger()
@@ -36,13 +39,16 @@ class RouletteWheel:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         
+        # 字体加载状态标志
+        self.font_loaded = False
+        
         # 地图难度映射关系
         self.map_difficulty_constraints = {
-            "零号大坝": ["常规", "机密", "绝密"],  # 都有
+            "零号大坝": ["常规", "机密", "永夜"],  # 零号大坝有永夜模式
             "巴克什": ["机密", "绝密"],  # 没有常规
             "长弓溪谷": ["常规", "机密"],  # 没有绝密
             "航天基地": ["机密", "绝密"],  # 没有常规
-            "潮汐监狱": ["监狱"]  # 只有监狱
+            "潮汐监狱": ["绝密"]  # 只有绝密
         }
         
         # 转盘配置 - 使用更美观的渐变色系 <mcreference link="https://how.dev/answers/how-to-make-a-circular-color-gradient-in-python" index="1">1</mcreference>
@@ -54,8 +60,8 @@ class RouletteWheel:
             },
             {
                 "title": "地图难度",
-                "items": ["常规", "机密", "绝密", "监狱"],  # 添加监狱难度
-                "colors": ["#74B9FF", "#FD79A8", "#FDCB6E", "#E17055"]
+                "items": ["常规", "机密", "绝密", "永夜"],  # 添加永夜模式
+                "colors": ["#74B9FF", "#FD79A8", "#FDCB6E", "#FF6B9D"]
             },
             {
                 "title": "子弹等级",
@@ -94,21 +100,81 @@ class RouletteWheel:
         self.total_frames = 60  # 减少帧数，只用PIL生成静态图片序列
         
     def get_font(self, size=12):
-        """获取字体，优先使用中文字体"""
+        """获取字体，优先使用内置中文字体"""
+        # 获取插件根目录（main.py所在目录）
+        plugin_root = os.path.dirname(os.path.abspath(__file__))
+        builtin_font_path = os.path.join(plugin_root, "NotoSansSC-Regular.ttf")
+        
         font_paths = [
+            # 内置字体（优先）
+            builtin_font_path,
+            # Windows 系统字体
             "C:/Windows/Fonts/msyh.ttc",  # 微软雅黑
             "C:/Windows/Fonts/simhei.ttf",  # 黑体
             "C:/Windows/Fonts/simsun.ttc",  # 宋体
-            "arial.ttf"
+            "C:/Windows/Fonts/simkai.ttf",  # 楷体
+            "C:/Windows/Fonts/simfang.ttf",  # 仿宋
+            # Linux 系统字体
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            # macOS 系统字体
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/Arial Unicode.ttf",
+            # 通用字体
+            "arial.ttf",
+            "Arial.ttf"
         ]
         
         for font_path in font_paths:
             try:
-                return ImageFont.truetype(font_path, size)
-            except:
+                font = ImageFont.truetype(font_path, size)
+                if font_path == builtin_font_path and not self.font_loaded:
+                    logger.info(f"成功加载内置字体: {font_path}")
+                    self.font_loaded = True
+                return font
+            except Exception as e:
                 continue
         
+        # 如果所有字体都加载失败，使用默认字体并警告
+        logger.warning("所有中文字体加载失败，使用默认字体（可能出现乱码）")
         return ImageFont.load_default()
+    
+    def get_fallback_text(self, chinese_text):
+        """获取备用英文文本（当字体无法显示中文时）"""
+        fallback_map = {
+            "地图": "Map",
+            "零号大坝": "Dam",
+            "巴克什": "Baksh", 
+            "长弓溪谷": "Valley",
+            "航天基地": "Space",
+            "潮汐监狱": "Prison",
+            "地图难度": "Difficulty",
+            "常规": "Normal",
+            "机密": "Secret",
+            "绝密": "Classified",
+            "永夜": "Eternal Night",
+            "子弹等级": "Ammo",
+            "护甲等级": "Armor", 
+            "头盔等级": "Helmet",
+            "一级": "Lv1",
+            "二级": "Lv2",
+            "三级": "Lv3",
+            "四级": "Lv4",
+            "五级": "Lv5",
+            "六级": "Lv6",
+            "枪": "Weapon",
+            "狙击枪": "Sniper",
+            "霰弹枪": "Shotgun",
+            "手枪": "Pistol",
+            "冲锋枪": "SMG",
+            "突击步枪": "Assault",
+            "射手步枪": "DMR",
+            "不带枪": "No Weapon"
+        }
+        return fallback_map.get(chinese_text, chinese_text)
     
     def create_wheel_image(self, config, rotation_angle, current_result=""):
         """创建单个转盘图像 - 美观版本"""
@@ -154,8 +220,11 @@ class RouletteWheel:
             
             font = self.get_font(9)
             
+            # 使用内置字体，不需要备用英文
+            display_text = item
+            
             # 计算文字边界框
-            bbox = draw.textbbox((0, 0), item, font=font)
+            bbox = draw.textbbox((0, 0), display_text, font=font)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
@@ -165,12 +234,12 @@ class RouletteWheel:
                     if dx != 0 or dy != 0:
                         draw.text(
                             (text_x - text_width // 2 + dx, text_y - text_height // 2 + dy),
-                            item, fill="#000000", font=font
+                            display_text, fill="#000000", font=font
                         )
             
             draw.text(
                 (text_x - text_width // 2, text_y - text_height // 2),
-                item, fill="#FFFFFF", font=font
+                display_text, fill="#FFFFFF", font=font
             )
         
         # 绘制倒三角指针
@@ -280,6 +349,38 @@ class RouletteWheel:
                 # 获取最终结果
                 result = self.get_result_at_angle(config, final_angle)
                 final_results.append(result)
+            
+            # 应用常规等级约束
+            difficulty = final_results[1]  # 难度结果
+            if difficulty == "常规":
+                # 常规等级约束：护甲和头盔最高四级，子弹最高三级
+                constraint_map = {
+                    "护甲等级": ("四级", ["一级", "二级", "三级", "四级"]),
+                    "头盔等级": ("四级", ["一级", "二级", "三级", "四级"]),
+                    "子弹等级": ("三级", ["一级", "二级", "三级"])
+                }
+                
+                # 查找需要约束的转盘索引
+                title_to_index = {config["title"]: idx for idx, config in enumerate(self.wheel_configs)}
+                
+                for title, (max_level, allowed_levels) in constraint_map.items():
+                    idx = title_to_index.get(title)
+                    if idx is not None and final_results[idx] not in allowed_levels:
+                        # 如果当前结果不在允许范围内，重新生成
+                        config = self.wheel_configs[idx]
+                        allowed_items = [item for item in config["items"] if item in allowed_levels]
+                        
+                        if allowed_items:
+                            # 从允许的项目中随机选择一个
+                            new_result = random.choice(allowed_items)
+                            final_results[idx] = new_result
+                            
+                            # 重新计算对应的角度
+                            items = config["items"]
+                            item_index = items.index(new_result)
+                            angle_per_item = 360 / len(items)
+                            target_angle = (270 - (item_index + 0.5) * angle_per_item) % 360
+                            final_angles[idx] = target_angle
             
             frames = []
             
